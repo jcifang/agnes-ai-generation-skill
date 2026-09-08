@@ -1,6 +1,6 @@
 ---
-name: agnes-ai-generation
-description: Call Agnes AI / Sapiens AI generation APIs for text, image, and video. Use when the user asks to use Agnes models, Agnes Image, Agnes Video, Agnes 2.0 Flash, apihub.agnes-ai.com, or to generate text, images, edit images, create videos, animate images, create keyframe videos, or test Agnes API calls.
+name: Agnes2.5
+description: Call Agnes AI / Sapiens AI generation APIs for text, image, and video. Use when the user asks to use Agnes models, Agnes Image, Agnes Video, Agnes 2.5 Flash, apihub.agnes-ai.com, or to generate text, images, edit images, create videos, animate images, create keyframe videos, or test Agnes API calls.
 ---
 
 # Agnes AI Generation
@@ -33,31 +33,43 @@ Streaming output is normalized and includes aggregated `content`, `events`, `don
 Image generation:
 
 ```bash
-python scripts/agnes_api.py image --prompt "A luminous floating city above a misty canyon at sunrise, cinematic realism" --size 1024x768
+python scripts/agnes_api.py image --prompt "A luminous floating city above a misty canyon at sunrise, cinematic realism" --size 2K --ratio 16:9
 ```
 
 Image-to-image:
 
 ```bash
-python scripts/agnes_api.py image --prompt "Turn the scene into a rainy cyberpunk night while preserving composition" --image https://example.com/input.png --size 1024x768
+python scripts/agnes_api.py image --prompt "Turn the scene into a rainy cyberpunk night while preserving composition" --image https://example.com/input.png --size 2K --ratio 16:9
+```
+
+Multi-image synthesis:
+
+```bash
+python scripts/agnes_api.py image --prompt "Merge these two styles into one cohesive scene" --image https://example.com/a.png --image https://example.com/b.png --size 2K --ratio 16:9
 ```
 
 Text-to-video with polling:
 
 ```bash
-python scripts/agnes_api.py video --prompt "A cinematic shot of a cat walking on the beach at sunset" --poll
+python scripts/agnes_api.py video --prompt "A cinematic shot of a cat walking on the beach at sunset" --mode text --poll
 ```
 
-Image-to-video:
+Image-to-video (reference mode):
 
 ```bash
-python scripts/agnes_api.py video --prompt "Animate subtle camera movement and natural lighting" --image https://example.com/image.png --poll
+python scripts/agnes_api.py video --prompt "Animate subtle camera movement and natural lighting" --mode reference --images https://example.com/image.png --poll
 ```
 
-Keyframe / multi-image video:
+Keyframe (first/last frame) video:
 
 ```bash
-python scripts/agnes_api.py video --prompt "Create a smooth cinematic transition between the two keyframes" --image https://example.com/a.png --image https://example.com/b.png --mode keyframes --poll
+python scripts/agnes_api.py video --prompt "Create a smooth cinematic transition between the two keyframes" --mode keyframe --first-frame https://example.com/a.png --last-frame https://example.com/b.png --poll
+```
+
+Multi-image reference video:
+
+```bash
+python scripts/agnes_api.py video --prompt "Blend the visual style of these reference images into one cohesive video" --mode reference --images https://example.com/a.png --images https://example.com/b.png --poll
 ```
 
 Retrieve a video task:
@@ -86,14 +98,14 @@ python scripts/agnes_api.py smoke-test --video-case text-to-video
 
 ## Workflow
 
-- Prefer `agnes-2.0-flash` for text chat/completions.
+- Prefer `agnes-2.5-flash` for text chat/completions. It is fully compatible with the old `agnes-2.0-flash` request shape (endpoint, messages, streaming, tools, and image-URL input are unchanged); only the `model` value differs.
 - Do not use Agnes Responses API multi-turn function calling for autonomous tool workflows. Live testing showed the provider can return `function_call` with overall `status=completed`, and submitting `function_call_output` with `previous_response_id` may fail. Use this skill's chat completions path for text generation and treat tool-calling as best-effort request-shape compatibility only.
-- Prefer `agnes-image-2.1-flash` for text-to-image, image-to-image, and high-information-density image generation. High-density generation is prompt-driven; include subject hierarchy, environment, secondary details, lighting, composition, and quality requirements.
-- Prefer `agnes-video-v2.0` for text-to-video, image-to-video, multi-image video, keyframe animation, prompt-based motion and scene control, cinematic output, asynchronous task creation, polling-based result retrieval, and seed-based reproducibility.
+- Prefer `agnes-image-2.5-flash` for text-to-image, image-to-image, multi-image synthesis, and high-information-density image generation. Use tier `--size` (1K/2K/3K/4K) with `--ratio` for predictable output pixels, e.g. `--size 2K --ratio 16:9`. High-density generation is prompt-driven; include subject hierarchy, environment, secondary details, lighting, composition, and quality requirements.
+- Prefer `agnes-video-2.5-flash` for text-to-video, keyframe (first/last frame) animation, and reference-based (image/audio) generation. The API is OpenAI Videos compatible. `mode` takes `text`, `keyframe` (uses `--first-frame`/`--last-frame`), or `reference` (uses `--images` up to 5 / `--audios` up to 3). Output `size` is fixed at `"720P"`, chosen via `--aspect-ratio`.
 - For image and video generation, convert any non-English user prompt to a fluent English generation prompt before calling the image/video API. English prompts are more stable for Agnes video generation. Preserve concrete visual details, style, lighting, composition, motion, camera instructions, and constraints during translation.
-- For videos, remember the API is asynchronous: create a task first, then poll or retrieve by `video_id` when the create response includes it. The script falls back to legacy `task_id` lookup only when `video_id` is absent.
-- The script validates image sizes, video frame counts, frame rates, and dimensions before sending requests. `num_frames` must be `8n + 1` and `<= 441`; `81` or `121` are good short values.
-- The video command defaults to `num_frames=121` and `frame_rate=24` for more stable generation. Video smoke tests default to `num_frames=81` and `frame_rate=24`.
+- For videos, remember the API is asynchronous: create a task first, then poll or retrieve by `video_id` with `model_name=agnes-video-2.5-flash`. The script falls back to legacy `task_id` lookup only when `video_id` is absent.
+- Agnes Video 2.5 Flash validates requests in this order: `size` (must be `"720P"`), `images` (max 5), `audios` (max 3), `videos` (not supported). `seconds` must be a string `"4"`–`"12"` and `n` is fixed at `1`.
+- The video command defaults to `mode=text` and `seconds="5"`. Poll every 1–2 seconds once a task is created.
 - Warn the user before costly or long-running live video generation unless they explicitly asked to test or generate video.
 - Test video capabilities one at a time with `smoke-test --video-case <case>` to avoid creating many tasks at once. Supported cases are `text-to-video`, `image-to-video`, `multi-image`, and `keyframes`.
 
@@ -111,5 +123,5 @@ python scripts/agnes_api.py smoke-test --video-case text-to-video
 - Return generated image/video URLs directly by default. Do not download, save, open, or inspect generated media unless the user explicitly asks for a local file or visual inspection.
 - For image responses, expect URL-style results when `extra_body.response_format` is `url`.
 - For video responses, extract URLs from `video_url`, `url`, or `remixed_from_video_id` when `status` is `completed`.
-- For video retrieval, prefer `GET /agnesapi?video_id=...&model_name=agnes-video-v2.0`; legacy `GET /v1/videos/{task_id}` remains a fallback.
+- For video retrieval, prefer `GET /agnesapi?video_id=...&model_name=agnes-video-2.5-flash`; legacy `GET /v1/videos/{task_id}` remains a fallback.
 - If a request fails, report HTTP status and provider error body without exposing the API key.

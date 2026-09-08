@@ -12,16 +12,16 @@ This release prioritizes the newer Agnes Video V2.0 `video_id` result lookup, re
 
 ## Features
 
-- Text generation with `agnes-2.0-flash`
+- Text generation with `agnes-2.5-flash`
 - Streaming text responses
 - OpenAI-compatible tool-calling request shape
-- Text-to-image with `agnes-image-2.1-flash`
-- Image-to-image editing with `agnes-image-2.1-flash`
+- Text-to-image with `agnes-image-2.5-flash`
+- Image-to-image editing with `agnes-image-2.5-flash`
+- Multi-image synthesis with `agnes-image-2.5-flash`
 - High-information-density image generation
-- Text-to-video with `agnes-video-v2.0`
-- Image-to-video with `agnes-video-v2.0`
-- Multi-image video generation
-- Keyframe animation
+- Text-to-video with `agnes-video-2.5-flash`
+- Keyframe (first/last frame) video with `agnes-video-2.5-flash`
+- Reference image / audio video with `agnes-video-2.5-flash`
 - Prompt-based motion and scene control
 - Cinematic video output
 - Asynchronous video task creation
@@ -99,33 +99,41 @@ python scripts/agnes_api.py text --prompt "Write a concise product tagline for a
 Text-to-image:
 
 ```powershell
-python scripts/agnes_api.py image --prompt "A luminous floating city above a misty canyon at sunrise, cinematic realism" --size 1024x768
+python scripts/agnes_api.py image --prompt "A luminous floating city above a misty canyon at sunrise, cinematic realism" --size 2K --ratio 16:9
 ```
 
 Image-to-image:
 
 ```powershell
-python scripts/agnes_api.py image --prompt "Turn the scene into a rainy cyberpunk night while preserving composition" --image https://example.com/input.png
+python scripts/agnes_api.py image --prompt "Turn the scene into a rainy cyberpunk night while preserving composition" --image https://example.com/input.png --size 2K --ratio 16:9
 ```
+
+Image commands default to `agnes-image-2.5-flash`. Prefer a tier `--size` (`1K`/`2K`/`3K`/`4K`) combined with `--ratio` (`1:1`, `3:4`, `4:3`, `16:9`, `9:16`, `2:3`, `3:2`, `21:9`) for predictable output pixels, e.g. `--size 2K --ratio 16:9`. Legacy exact sizes such as `1024x768` are also accepted. Pass multiple `--image` flags for multi-image synthesis; add `--return-base64` to receive Base64 output.
 
 Text-to-video:
 
 ```powershell
-python scripts/agnes_api.py video --prompt "A cinematic shot of a cat walking on the beach at sunset" --poll
+python scripts/agnes_api.py video --prompt "A cinematic shot of a cat walking on the beach at sunset" --mode text --poll
 ```
 
-Video commands default to `--num-frames 121 --frame-rate 24` to reduce instability from missing core video parameters. The script validates `num_frames` before sending requests: it must satisfy `8n + 1` and be no more than `441`. It also checks frame rate and dimensions.
+Video commands default to `agnes-video-2.5-flash`, `mode=text`, `seconds="5"`, and a fixed output `size` of `"720P"` (chosen via `--aspect-ratio`). The script validates requests before sending: `size` must be `"720P"`, `images` up to 5, `audios` up to 3, `seconds` as a string `"4"`–`"12"`, and `n` fixed at `1`.
 
-Image-to-video:
+Image-to-video (reference mode):
 
 ```powershell
-python scripts/agnes_api.py video --prompt "Animate subtle camera movement and natural lighting" --image https://example.com/image.png --poll
+python scripts/agnes_api.py video --prompt "Animate subtle camera movement and natural lighting" --mode reference --images https://example.com/image.png --poll
 ```
 
-Multi-image / keyframe video:
+Keyframe (first/last frame) video:
 
 ```powershell
-python scripts/agnes_api.py video --prompt "Create a smooth cinematic transition between the two keyframes" --image https://example.com/a.png --image https://example.com/b.png --mode keyframes --poll
+python scripts/agnes_api.py video --prompt "Create a smooth cinematic transition between the two keyframes" --mode keyframe --first-frame https://example.com/a.png --last-frame https://example.com/b.png --poll
+```
+
+Reference audio (reference mode, can be combined with reference images):
+
+```powershell
+python scripts/agnes_api.py video --prompt "Follow the rhythm of <Audio 1>" --mode reference --audios https://example.com/audio.mp3 --poll
 ```
 
 Retrieve a video task:
@@ -140,7 +148,7 @@ By default, return generated image or video `urls` directly. Do not download, sa
 
 Streaming text output also includes aggregated `content`, event count, completion status, and a short raw prefix so the result is easier to inspect.
 
-When the create response includes `video_id`, the script prefers the newer result endpoint: `/agnesapi?video_id=...`. It falls back to the legacy `task_id` endpoint only when `video_id` is absent. For completed video tasks, the script extracts direct mp4 URLs from `video_url`, `url`, or the live-response field `remixed_from_video_id`, then places them in `urls`.
+When the create response includes `video_id`, the script prefers the newer result endpoint: `/agnesapi?video_id=...&model_name=agnes-video-2.5-flash`. It falls back to the legacy `task_id` endpoint only when `video_id` is absent. For completed video tasks, the script extracts direct mp4 URLs from `video_url`, `url`, or the live-response field `remixed_from_video_id`, then places them in `urls`.
 
 Note: Agnes Responses API multi-turn function calling is currently not suitable as the automatic tool-loop model for agents such as Codex or Claude Code. This skill's script uses the chat completions path; tool calling should be treated as request-shape compatibility rather than stable multi-turn tool execution.
 

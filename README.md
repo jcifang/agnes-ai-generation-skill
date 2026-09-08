@@ -12,16 +12,16 @@
 
 ## 功能
 
-- 文本生成：`agnes-2.0-flash`
+- 文本生成：`agnes-2.5-flash`
 - 流式文本响应
 - OpenAI 兼容的工具调用请求结构
-- 文生图：`agnes-image-2.1-flash`
-- 图生图 / 图片编辑：`agnes-image-2.1-flash`
+- 文生图：`agnes-image-2.5-flash`
+- 图生图 / 图片编辑：`agnes-image-2.5-flash`
+- 多图合成：`agnes-image-2.5-flash`
 - 高信息密度图片生成
-- 文本转视频：`agnes-video-v2.0`
-- 图像转视频：`agnes-video-v2.0`
-- 多图像视频生成
-- 关键帧动画
+- 文本转视频：`agnes-video-2.5-flash`
+- 关键帧（首尾帧）视频：`agnes-video-2.5-flash`
+- 参考图 / 参考音频视频：`agnes-video-2.5-flash`
 - 基于提示词的运动与场景控制
 - 电影感视觉输出
 - 异步视频任务创建
@@ -103,7 +103,7 @@ python scripts/agnes_api.py text --prompt "Write a concise product tagline for a
 文生图：
 
 ```powershell
-python scripts/agnes_api.py image --prompt "A luminous floating city above a misty canyon at sunrise, cinematic realism" --size 1024x768
+python scripts/agnes_api.py image --prompt "A luminous floating city above a misty canyon at sunrise, cinematic realism" --size 2K --ratio 16:9
 ```
 
 中文提示词文生图，脚本会先自动翻译成英文：
@@ -115,27 +115,35 @@ python scripts/agnes_api.py image --prompt "一座高信息密度的未来城市
 图生图：
 
 ```powershell
-python scripts/agnes_api.py image --prompt "Turn the scene into a rainy cyberpunk night while preserving composition" --image https://example.com/input.png
+python scripts/agnes_api.py image --prompt "Turn the scene into a rainy cyberpunk night while preserving composition" --image https://example.com/input.png --size 2K --ratio 16:9
 ```
+
+图片命令默认使用 `agnes-image-2.5-flash`。尺寸建议用档位 `--size`（`1K`/`2K`/`3K`/`4K`）搭配 `--ratio`（`1:1`、`3:4`、`4:3`、`16:9`、`9:16`、`2:3`、`3:2`、`21:9`）以获得可预期的输出像素，例如 `--size 2K --ratio 16:9`；也兼容 `1024x768` 这类历史精确尺寸。多图合成只需重复传入多个 `--image`，`--return-base64` 可改为 Base64 返回。
 
 文生视频：
 
 ```powershell
-python scripts/agnes_api.py video --prompt "A cinematic shot of a cat walking on the beach at sunset" --poll
+python scripts/agnes_api.py video --prompt "A cinematic shot of a cat walking on the beach at sunset" --mode text --poll
 ```
 
-视频命令默认使用 `--num-frames 121 --frame-rate 24`，以减少缺少关键视频参数导致的不稳定。脚本会在请求前检查 `num_frames` 是否满足 `8n + 1` 且不超过 `441`，并检查帧率、尺寸等基础参数。
+视频命令默认使用 `agnes-video-2.5-flash`，`mode=text`、`seconds="5"`，输出尺寸固定为 `"720P"`（通过 `--aspect-ratio` 选择画幅）。脚本会在请求前校验：`size` 必须为 `"720P"`，`images` 不超过 5 张，`audios` 不超过 3 段，`seconds` 为字符串 `"4"`–`"12"`，`n` 固定为 `1`。
 
-图生视频：
+参考图 / 图生视频（reference 模式）：
 
 ```powershell
-python scripts/agnes_api.py video --prompt "Animate subtle camera movement and natural lighting" --image https://example.com/image.png --poll
+python scripts/agnes_api.py video --prompt "Animate subtle camera movement and natural lighting" --mode reference --images https://example.com/image.png --poll
 ```
 
-多图 / 关键帧视频：
+关键帧视频（首尾帧控制）：
 
 ```powershell
-python scripts/agnes_api.py video --prompt "Create a smooth cinematic transition between the two keyframes" --image https://example.com/a.png --image https://example.com/b.png --mode keyframes --poll
+python scripts/agnes_api.py video --prompt "Create a smooth cinematic transition between the two keyframes" --mode keyframe --first-frame https://example.com/a.png --last-frame https://example.com/b.png --poll
+```
+
+参考音频（reference 模式，可叠加参考图）：
+
+```powershell
+python scripts/agnes_api.py video --prompt "Follow the rhythm of <Audio 1>" --mode reference --audios https://example.com/audio.mp3 --poll
 ```
 
 查询视频任务：
@@ -150,7 +158,7 @@ python scripts/agnes_api.py video-get video_123456
 
 流式文本也会聚合输出 `content`，同时保留事件数量、是否完成和原始响应前缀，便于快速判断流式接口是否正常。
 
-视频创建接口如果返回 `video_id`，脚本会优先使用新版 `video_id` 查询接口：`/agnesapi?video_id=...`。如果旧响应没有 `video_id`，脚本才回退到兼容的 `task_id` 查询接口。视频完成后，脚本会从 `video_url`、`url` 或 Agnes 实测返回中的 `remixed_from_video_id` 提取可直接访问的 mp4 链接，并放入 `urls`。
+视频创建接口如果返回 `video_id`，脚本会优先使用新版查询接口：`/agnesapi?video_id=...&model_name=agnes-video-2.5-flash`。如果旧响应没有 `video_id`，脚本才回退到兼容的 `task_id` 查询接口。视频完成后，脚本会从 `video_url`、`url` 或 Agnes 实测返回中的 `remixed_from_video_id` 提取可直接访问的 mp4 链接，并放入 `urls`。
 
 注意：Agnes Responses API 的多轮函数调用目前不适合作为 Codex / Claude Code 这类 agent 的自动工具循环模型。本 skill 的脚本使用 chat completions 路径；工具调用只应视为请求结构兼容能力，而不是稳定的多轮工具执行能力。
 
@@ -193,7 +201,7 @@ python scripts/agnes_api.py smoke-test --video-case text-to-video
 
 ## 提示词语言策略
 
-Agnes 视频生成使用英文提示词更稳定。因此本 skill 的脚本默认会检测图片/视频提示词中的非英文字符，并先调用 `agnes-2.0-flash` 翻译成英文生成提示词，再调用图片或视频 API。
+Agnes 视频生成使用英文提示词更稳定。因此本 skill 的脚本默认会检测图片/视频提示词中的非英文字符，并先调用 `agnes-2.5-flash` 翻译成英文生成提示词，再调用图片或视频 API。
 
 翻译时会保留：
 

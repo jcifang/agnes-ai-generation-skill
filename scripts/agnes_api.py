@@ -16,10 +16,12 @@ from typing import Any
 
 
 BASE_URL = "https://apihub.agnes-ai.com"
-TEXT_MODEL = "agnes-2.0-flash"
-IMAGE_MODEL = "agnes-image-2.1-flash"
-VIDEO_MODEL = "agnes-video-v2.0"
+TEXT_MODEL = "agnes-2.5-flash"
+IMAGE_MODEL = "agnes-image-2.5-flash"
+VIDEO_MODEL = "agnes-video-2.5-flash"
 SIZE_RE = re.compile(r"^[1-9]\d*x[1-9]\d*$")
+TIER_RE = re.compile(r"^[1-4]K$")
+RATIOS = ("1:1", "3:4", "4:3", "16:9", "9:16", "2:3", "3:2", "21:9")
 
 
 def get_api_key() -> str:
@@ -244,20 +246,39 @@ def retrieve_video(identifier: str, model_name: str | None = VIDEO_MODEL) -> dic
 
 
 def validate_size(value: str | None, name: str = "size") -> None:
-    if value and not SIZE_RE.match(value):
-        raise SystemExit(f"Invalid {name}: {value}. Expected WIDTHxHEIGHT, for example 1024x768.")
+    if not value:
+        return
+    if TIER_RE.match(value):
+        return
+    if SIZE_RE.match(value):
+        return
+    raise SystemExit(
+        f"Invalid {name}: {value}. Expected a tier such as 1K/2K/3K/4K, or WIDTHxHEIGHT such as 1024x768."
+    )
 
 
 def validate_video_args(args: argparse.Namespace) -> None:
-    if args.num_frames is not None:
-        if args.num_frames > 441 or (args.num_frames - 1) % 8 != 0:
-            raise SystemExit("Invalid --num-frames: must be <= 441 and satisfy 8n + 1, for example 81 or 121.")
-    if args.frame_rate is not None and not (1 <= args.frame_rate <= 60):
-        raise SystemExit("Invalid --frame-rate: supported range is 1-60.")
-    for name in ("height", "width"):
-        value = getattr(args, name)
-        if value is not None and value <= 0:
-            raise SystemExit(f"Invalid --{name.replace('_', '-')}: must be a positive integer.")
+    seconds = getattr(args, "seconds", None)
+    if seconds is not None:
+        check = str(seconds)
+        try:
+            n = int(check)
+        except ValueError:
+            raise SystemExit(f"Invalid --seconds: {seconds!r}. Agnes Video 2.5 Flash expects a string \"4\"-\"12\".")
+        if not (4 <= n <= 12):
+            raise SystemExit(f"Invalid --seconds: {check}. Agnes Video 2.5 Flash supports \"4\"-\"12\".")
+    size = getattr(args, "size", None)
+    if size is not None and str(size) != "720P":
+        raise SystemExit(f"Invalid --size: {size}. Agnes Video 2.5 Flash only supports \"720P\".")
+    images = getattr(args, "images", None) or []
+    if len(images) > 5:
+        raise SystemExit("Invalid --images: Agnes Video 2.5 Flash supports at most 5 reference images.")
+    audios = getattr(args, "audios", None) or []
+    if len(audios) > 3:
+        raise SystemExit("Invalid --audios: Agnes Video 2.5 Flash supports at most 3 reference audios.")
+    n_value = getattr(args, "n", None)
+    if n_value is not None and n_value != 1:
+        raise SystemExit("Invalid --n: Agnes Video 2.5 Flash only supports n=1.")
 
 
 def cmd_text(args: argparse.Namespace) -> None:
@@ -294,6 +315,8 @@ def cmd_text(args: argparse.Namespace) -> None:
 
 def cmd_image(args: argparse.Namespace) -> None:
     validate_size(args.size)
+    if args.ratio and args.ratio not in RATIOS:
+        raise SystemExit(f"Invalid --ratio: {args.ratio}. Supported values are {', '.join(RATIOS)}.")
     prompt, translated_prompt = prepare_generation_prompt(args.prompt, not args.no_translate_prompt)
     payload: dict[str, Any] = {
         "model": IMAGE_MODEL,
@@ -301,11 +324,14 @@ def cmd_image(args: argparse.Namespace) -> None:
     }
     if args.size:
         payload["size"] = args.size
-    extra: dict[str, Any] = {"response_format": "url"}
+    if args.ratio:
+        payload["ratio"] = args.ratio
     if args.image:
-        extra["image"] = args.image
-    if extra:
-        payload["extra_body"] = extra
+        payload["image"] = args.image
+    if args.return_base64:
+        payload["extra_body"] = {"response_format": "b64_json"}
+    else:
+        payload["extra_body"] = {"response_format": "url"}
     data = request_json("POST", "/v1/images/generations", payload)
     urls = extract_image_urls(data)
     output_result(
@@ -323,31 +349,32 @@ def video_payload(args: argparse.Namespace) -> dict[str, Any]:
     prompt, translated_prompt = prepare_generation_prompt(args.prompt, not args.no_translate_prompt)
     args._prompt_used = prompt
     args._translated_prompt = translated_prompt
+    mode = getattr(args, "mode", "text") or "text"
     payload: dict[str, Any] = {
         "model": VIDEO_MODEL,
         "prompt": prompt,
+        "mode": mode,
     }
-    for name in (
-        "height",
-        "width",
-        "num_frames",
-        "frame_rate",
-        "num_inference_steps",
-        "seed",
-        "negative_prompt",
-    ):
+    for name in ("seconds", "size", "aspect_ratio", "seed", "n"):
         value = getattr(args, name)
         if value is not None:
             payload[name] = value
-    if args.mode:
-        payload["mode"] = args.mode
-    if args.image:
-        if len(args.image) == 1 and args.mode != "keyframes":
-            payload["image"] = args.image[0]
-        else:
-            payload["extra_body"] = {"image": args.image}
-            if args.mode:
-                payload["extra_body"]["mode"] = args.mode
+    if mode == "keyframe":
+        media: dict[str, Any] = {}
+        if getattr(args, "first_frame", None):
+            media["first_frame"] = args.first_frame
+        if getattr(args, "last_frame", None):
+            media["last_frame"] = args.last_frame
+        if not media:
+            raise SystemExit("--mode keyframe requires --first-frame and/or --last-frame.")
+        payload.update(media)
+    elif mode == "reference":
+        if getattr(args, "images", None):
+            payload["images"] = args.images
+        if getattr(args, "audios", None):
+            payload["audios"] = args.audios
+        if "images" not in payload and "audios" not in payload:
+            raise SystemExit("--mode reference requires --images and/or --audios.")
     return payload
 
 
@@ -486,10 +513,11 @@ def cmd_smoke_test(args: argparse.Namespace) -> None:
     validate_size(args.image_size, "image-size")
     validate_video_args(
         argparse.Namespace(
-            num_frames=args.video_num_frames,
-            frame_rate=args.video_frame_rate,
-            height=args.video_height,
-            width=args.video_width,
+            seconds=args.video_seconds,
+            size=args.video_size,
+            n=args.video_n,
+            images=None,
+            audios=None,
         )
     )
     text = request_json(
@@ -571,7 +599,8 @@ def cmd_smoke_test(args: argparse.Namespace) -> None:
                 "model": IMAGE_MODEL,
                 "prompt": "Turn this into a clean blue square icon while preserving the centered composition",
                 "size": args.image_size,
-                "extra_body": {"image": [generated_image_url], "response_format": "url"},
+                "image": [generated_image_url],
+                "extra_body": {"response_format": "url"},
             },
         )
         require_ok("image-to-image", image_edit, ("data",))
@@ -580,12 +609,7 @@ def cmd_smoke_test(args: argparse.Namespace) -> None:
     video_common = {
         "model": VIDEO_MODEL,
     }
-    for key, value in (
-        ("height", args.video_height),
-        ("width", args.video_width),
-        ("num_frames", args.video_num_frames),
-        ("frame_rate", args.video_frame_rate),
-    ):
+    for key, value in (("seconds", args.video_seconds), ("size", args.video_size)):
         if value is not None:
             video_common[key] = value
     video_results = {}
@@ -594,6 +618,7 @@ def cmd_smoke_test(args: argparse.Namespace) -> None:
             "video-text-to-video",
             {
                 **video_common,
+                "mode": "text",
                 "prompt": "A simple cinematic shot of a red square gently moving on a white background",
             },
             args,
@@ -603,8 +628,9 @@ def cmd_smoke_test(args: argparse.Namespace) -> None:
             "video-image-to-video",
             {
                 **video_common,
+                "mode": "reference",
                 "prompt": "Animate the icon with subtle floating motion, stable centered composition",
-                "image": generated_image_url,
+                "images": [generated_image_url],
             },
             args,
         )
@@ -615,8 +641,9 @@ def cmd_smoke_test(args: argparse.Namespace) -> None:
             "video-multi-image",
             {
                 **video_common,
+                "mode": "reference",
                 "prompt": "Create a smooth transformation from the first icon to the second icon, stable centered composition",
-                "extra_body": {"image": [generated_image_url, edited_image_url]},
+                "images": [generated_image_url, edited_image_url],
             },
             args,
         )
@@ -627,8 +654,10 @@ def cmd_smoke_test(args: argparse.Namespace) -> None:
             "video-keyframes",
             {
                 **video_common,
+                "mode": "keyframe",
                 "prompt": "Create a smooth keyframe transition between the two icons, stable centered composition",
-                "extra_body": {"image": [generated_image_url, edited_image_url], "mode": "keyframes"},
+                "first_frame": generated_image_url,
+                "last_frame": edited_image_url,
             },
             args,
         )
@@ -660,10 +689,16 @@ def build_parser() -> argparse.ArgumentParser:
     text.add_argument("--raw", action="store_true", help="Print the raw provider response.")
     text.set_defaults(func=cmd_text)
 
-    image = sub.add_parser("image", help="Generate or edit an image.")
+    image = sub.add_parser("image", help="Generate or edit an image with Agnes Image 2.5 Flash.")
     image.add_argument("--prompt", required=True)
-    image.add_argument("--size", default="1024x768")
-    image.add_argument("--image", action="append", help="Input image URL. Repeat for multiple images.")
+    image.add_argument("--size", default="1024x768", help="Output size tier (1K/2K/3K/4K) or WIDTHxHEIGHT such as 1024x768.")
+    image.add_argument(
+        "--ratio",
+        choices=RATIOS,
+        help="Aspect ratio combined with a tier-size, e.g. --size 2K --ratio 16:9. Default 1:1.",
+    )
+    image.add_argument("--image", action="append", help="Input image URL or Data URI. Repeat for multi-image synthesis.")
+    image.add_argument("--return-base64", action="store_true", help="Return Base64 data instead of a URL.")
     image.add_argument(
         "--no-translate-prompt",
         action="store_true",
@@ -672,17 +707,35 @@ def build_parser() -> argparse.ArgumentParser:
     image.add_argument("--raw", action="store_true", help="Print the raw provider response.")
     image.set_defaults(func=cmd_image)
 
-    video = sub.add_parser("video", help="Create a video task.")
+    video = sub.add_parser("video", help="Create a video task with Agnes Video 2.5 Flash.")
     video.add_argument("--prompt", required=True)
-    video.add_argument("--image", action="append", help="Input image URL. Repeat for multi-image or keyframes.")
-    video.add_argument("--mode", choices=("ti2vid", "keyframes"))
-    video.add_argument("--height", type=int)
-    video.add_argument("--width", type=int)
-    video.add_argument("--num-frames", type=int, default=121)
-    video.add_argument("--frame-rate", type=float, default=24)
-    video.add_argument("--num-inference-steps", type=int)
-    video.add_argument("--seed", type=int)
-    video.add_argument("--negative-prompt")
+    video.add_argument(
+        "--mode",
+        choices=("text", "keyframe", "reference"),
+        default="text",
+        help="Generation mode: text, keyframe (first/last frame), or reference (images/audios).",
+    )
+    video.add_argument("--seconds", help="Video duration as a string, \"4\"-\"12\". Default \"5\".")
+    video.add_argument("--size", help="Only \"720P\" is supported by Agnes Video 2.5 Flash.")
+    video.add_argument(
+        "--aspect-ratio",
+        choices=("21:9", "16:9", "4:3", "1:1", "3:4", "9:16"),
+        help="Output aspect ratio. Default 16:9.",
+    )
+    video.add_argument("--seed", type=int, help="Random seed for reproducibility.")
+    video.add_argument("--n", type=int, help="Only 1 is supported.")
+    video.add_argument("--first-frame", help="First frame image URL for keyframe mode.")
+    video.add_argument("--last-frame", help="Last frame image URL for keyframe mode.")
+    video.add_argument(
+        "--images",
+        action="append",
+        help="Reference image URL for reference mode. Repeat up to 5 times.",
+    )
+    video.add_argument(
+        "--audios",
+        action="append",
+        help="Reference audio URL for reference mode. Repeat up to 3 times.",
+    )
     video.add_argument(
         "--no-translate-prompt",
         action="store_true",
@@ -703,10 +756,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     smoke = sub.add_parser("smoke-test", help="Run live text, image, and video API tests.")
     smoke.add_argument("--image-size", default="1024x768")
-    smoke.add_argument("--video-height", type=int)
-    smoke.add_argument("--video-width", type=int)
-    smoke.add_argument("--video-num-frames", type=int, default=81)
-    smoke.add_argument("--video-frame-rate", type=float, default=24)
+    smoke.add_argument("--video-seconds", default=None, help="Video duration string \"4\"-\"12\".")
+    smoke.add_argument("--video-size", default=None, help="Fixed to \"720P\" for Agnes Video 2.5 Flash.")
+    smoke.add_argument("--video-n", type=int, default=None, help="Only 1 is supported.")
     smoke.add_argument("--include-image-edit", action="store_true", help="Also test image-to-image editing.")
     smoke.add_argument("--strict-tools", action="store_true", help="Fail if the tool-calling response has no tool_calls.")
     smoke.add_argument("--poll-video", action="store_true")
