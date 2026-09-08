@@ -86,10 +86,10 @@ python scripts/agnes_api.py smoke-test --video-case text-to-video
 
 ## Workflow
 
-- Prefer `agnes-2.0-flash` for text chat/completions.
+- Prefer `agnes-2.5-flash` for text chat/completions.
 - Do not use Agnes Responses API multi-turn function calling for autonomous tool workflows. Live testing showed the provider can return `function_call` with overall `status=completed`, and submitting `function_call_output` with `previous_response_id` may fail. Use this skill's chat completions path for text generation and treat tool-calling as best-effort request-shape compatibility only.
-- Prefer `agnes-image-2.1-flash` for text-to-image, image-to-image, and high-information-density image generation. High-density generation is prompt-driven; include subject hierarchy, environment, secondary details, lighting, composition, and quality requirements.
-- Prefer `agnes-video-v2.0` for text-to-video, image-to-video, multi-image video, keyframe animation, prompt-based motion and scene control, cinematic output, asynchronous task creation, polling-based result retrieval, and seed-based reproducibility.
+- Prefer `agnes-image-2.5-flash` for text-to-image, image-to-image, and high-information-density image generation. High-density generation is prompt-driven; include subject hierarchy, environment, secondary details, lighting, composition, and quality requirements.
+- Prefer `agnes-video-2.5-flash` for text-to-video, image-to-video, multi-image video, keyframe animation, prompt-based motion and scene control, cinematic output, asynchronous task creation, polling-based result retrieval, and seed-based reproducibility.
 - For image and video generation, convert any non-English user prompt to a fluent English generation prompt before calling the image/video API. English prompts are more stable for Agnes video generation. Preserve concrete visual details, style, lighting, composition, motion, camera instructions, and constraints during translation.
 - For videos, remember the API is asynchronous: create a task first, then poll or retrieve by `video_id` when the create response includes it. The script falls back to legacy `task_id` lookup only when `video_id` is absent.
 - The script validates image sizes, video frame counts, frame rates, and dimensions before sending requests. `num_frames` must be `8n + 1` and `<= 441`; `81` or `121` are good short values.
@@ -111,5 +111,5 @@ python scripts/agnes_api.py smoke-test --video-case text-to-video
 - Return generated image/video URLs directly by default. Do not download, save, open, or inspect generated media unless the user explicitly asks for a local file or visual inspection.
 - For image responses, expect URL-style results when `extra_body.response_format` is `url`.
 - For video responses, extract URLs from `video_url`, `url`, or `remixed_from_video_id` when `status` is `completed`.
-- For video retrieval, prefer `GET /agnesapi?video_id=...&model_name=agnes-video-v2.0`; legacy `GET /v1/videos/{task_id}` remains a fallback.
+- For video retrieval, prefer `GET /agnesapi?video_id=...&model_name=agnes-video-2.5-flash`; legacy `GET /v1/videos/{task_id}` remains a fallback.
 - If a request fails, report HTTP status and provider error body without exposing the API key.

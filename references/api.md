@@ -10,11 +10,11 @@ Content type: `application/json`
 
 Endpoint: `POST /v1/chat/completions`
 
-Model: `agnes-2.0-flash`
+Model: `agnes-2.5-flash`
 
 Required:
 
-- `model`: fixed as `agnes-2.0-flash`
+- `model`: fixed as `agnes-2.5-flash`
 - `messages`: OpenAI-compatible chat messages
 
 Optional:
@@ -32,11 +32,11 @@ Response is OpenAI-compatible and includes `choices[].message.content` and `usag
 
 Endpoint: `POST /v1/images/generations`
 
-Model: `agnes-image-2.1-flash`
+Model: `agnes-image-2.5-flash`
 
 Required:
 
-- `model`: fixed as `agnes-image-2.1-flash`
+- `model`: fixed as `agnes-image-2.5-flash`
 - `prompt`: text instruction for image generation or editing
 
 Optional:
@@ -61,7 +61,7 @@ Recommended result endpoint: `GET /agnesapi?video_id={video_id}`
 
 Legacy task endpoint: `GET /v1/videos/{task_id}`
 
-Model: `agnes-video-v2.0`
+Model: `agnes-video-2.5-flash`
 
 The video API is asynchronous. Create a task, then retrieve or poll by the returned `video_id` when present. Fall back to `task_id` only for older responses.
 
@@ -69,7 +69,7 @@ Use English prompts for video generation whenever possible. If the user prompt i
 
 Required:
 
-- `model`: fixed as `agnes-video-v2.0`
+- `model`: fixed as `agnes-video-2.5-flash`
 - `prompt`: text description of the video
 
 Optional:

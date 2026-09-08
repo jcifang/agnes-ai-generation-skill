@@ -16,9 +16,9 @@ from typing import Any
 
 
 BASE_URL = "https://apihub.agnes-ai.com"
-TEXT_MODEL = "agnes-2.0-flash"
-IMAGE_MODEL = "agnes-image-2.1-flash"
-VIDEO_MODEL = "agnes-video-v2.0"
+TEXT_MODEL = "agnes-2.5-flash"
+IMAGE_MODEL = "agnes-image-2.5-flash"
+VIDEO_MODEL = "agnes-video-2.5-flash"
 SIZE_RE = re.compile(r"^[1-9]\d*x[1-9]\d*$")
 
 
